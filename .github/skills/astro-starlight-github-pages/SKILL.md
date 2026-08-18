@@ -33,7 +33,7 @@ repo/
 2. **`base` を設定したら必ず `npm run build` + `npm run preview` で確認する。** `npm run dev` だけでは本番相当の検証にならない。
 3. **md 間の `.md` リンクは Astro も Starlight も変換しない。** 素の状態ではリンク切れになるため、後述の rehype プラグインが必須。
 4. **frontmatter の `title` は必須。** 無いとビルドが失敗する。既存 md 全件の確認が最初の関門。
-5. **Starlight は Mermaid に対応していない。** Mermaid のコードブロックは素の状態では `flowchart TD ...` という生テキストで表示される。エラーも警告も出ないため、ステップ 1 で必ず有無を数える。
+5. **Starlight は Mermaid にも GitHub のアラート記法にも対応していない。** どちらも素の状態では `flowchart TD ...` `[!NOTE]` という生テキストで表示される。エラーも警告も出ないため、ステップ 1 で必ず有無を数える。
 
 ## 手順
 
@@ -72,6 +72,9 @@ for img in $(ls images/); do grep -rq "$img" docs/ || echo "未使用: images/$i
 # Mermaid コードブロック（Starlight 単体では図にならない。あれば astro-mermaid が必要）
 grep -rc '^```mermaid' docs/ | grep -v ':0$'
 grep -rhA1 '^```mermaid' docs/ | grep -vE '^```mermaid|^--' | awk '{print $1}' | sort | uniq -c
+
+# GitHub のアラート記法（Starlight 未対応。あれば remark-github-alerts が必要）
+grep -rhoE '^> \[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]' docs/ | sort | uniq -c
 
 # 画像の置き場所パターンを判定（docs/images/ があればページ単位フォルダへの再構成を検討）
 ls -d docs/images images 2>/dev/null; true
@@ -252,13 +255,15 @@ done
 
 ```bash
 npm init -y
-npm install astro @astrojs/starlight @astrojs/markdown-remark sharp
+npm install astro @astrojs/starlight @astrojs/markdown-remark sharp unist-util-visit
 
 # ステップ 1 で mermaid ブロックが見つかった場合のみ追加する
 npm install astro-mermaid mermaid @mermaid-js/layout-elk
 ```
 
 > **`@astrojs/markdown-remark` を省略しない。** `astro.config.mjs` がここから `unified` を import する。`astro` の依存として `node_modules` に入るため省略しても動いてしまうことがあるが、npm のフラット配置に依存した偶然であり、依存構造が変わると `Cannot find package` で壊れる。直接 import するものは直接依存に書く。
+
+> **`unist-util-visit` も同じ理由で省略しない。** `remark-github-alerts.mjs` がここから `visit` を import する。remark 系の推移的依存として `node_modules` に必ず存在するため**省略しても動いてしまう**が、依存構造が変わった瞬間に壊れる。アラート記法が 0 件でプラグインを使わない場合のみ不要。
 
 > **`mermaid` と `@mermaid-js/layout-elk` も明示的に入れる。** どちらも `astro-mermaid` の peerDependency で、入れないと警告のみで install が通り、ビルド時か実行時に落ちる。
 
@@ -284,6 +289,7 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 - `assets/astro.config.mjs` — Astro 本体の設定
 - `assets/content.config.ts` — コンテンツコレクション定義（`src/content.config.ts` に置く）
 - `assets/rehype-markdown-links.mjs` — md 間リンク解決プラグイン（`plugins/` に置く）
+- `assets/remark-github-alerts.mjs` — GitHub アラート記法の変換プラグイン（`plugins/` に置く）
 - `assets/feature-build-only.yml` — feature ブランチ用のビルド検証（`.github/workflows/` に置く）
 - `assets/main-build-and-publish.yml` — main 用のビルド＋Pages 公開（`.github/workflows/` に置く）
 - `assets/gitignore` — `.gitignore` に追記
@@ -315,6 +321,21 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 > **`mermaid()` は必ず `starlight()` より前に置く。** `integrations` は上から順に適用されるため、後ろに置くと Starlight のコードブロック処理が先に走り、**エラーも警告も出ないまま図にならない**。テンプレートは既に正しい順序になっているので、並べ替えないこと。
 >
 > ステップ 1 で mermaid ブロックが 0 件だった場合は、`import mermaid` と `mermaid({...})` を削除する（依存も不要）。残したまま `astro-mermaid` を入れ忘れると `Cannot find package` でビルドが落ちる。
+
+> **GitHub のアラート記法（`> [!NOTE]` `> [!TIP]` 等）も Starlight は素で扱えない。** Starlight が aside として認識するのは `:::tip` 形式の container directive だけなので、そのままだと `[!NOTE]` という文字列が本文に残る。`assets/remark-github-alerts.mjs` が blockquote を container directive に置き換え、Starlight の `remark-asides` に処理を引き継がせる。
+>
+> Starlight の aside は **`note` / `tip` / `caution` / `danger` の 4 種類しかない**ため、GitHub の 5 種類は以下に寄せている。
+>
+> | GitHub | Starlight | 既定ラベル（`lang: 'ja'` 時） |
+> | --- | --- | --- |
+> | `NOTE` | `note` | ノート |
+> | `TIP` | `tip` | ヒント |
+> | `IMPORTANT` | `note` | ノート |
+> | `WARNING` | `caution` | 注意 |
+> | `CAUTION` | `danger` | 危険 |
+>
+> `IMPORTANT` と `NOTE` が同じ見た目になる点は許容している。区別したい場合は `VARIANT_BY_ALERT` を書き換える。
+> ラベルは `locales` の `lang` から自動で日本語になる。変えたい場合は各 aside に `:::note[独自ラベル]` と書く必要があり、この記法変換とは両立しないため通常は既定のままでよい。
 
 ```bash
 # 実際のアカウント名を取得する
@@ -463,6 +484,15 @@ echo "dist  : $(grep -rho 'class="mermaid"' dist/ | wc -l | tr -d ' ')"
 
 # 生テキストのまま残っていないかを確認する（0件であるべき）
 grep -rhoE '<code[^>]*>(graph|flowchart|sequenceDiagram|gantt|classDiagram|erDiagram|stateDiagram)' dist/ | sort | uniq -c
+
+# GitHub アラート記法が aside に変換されているかを確認する（アラートがある場合）
+# ソースの件数と dist の aside 数が一致すべき。
+# ※ --include='*.html' を必ず付ける。CSS 内のセレクタ定義も拾ってしまうため。
+echo "ソース: $(grep -rhoE '^> \[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]' src/content/docs/ | wc -l | tr -d ' ')"
+echo "dist  : $(grep -rho 'starlight-aside--' dist/ --include='*.html' | wc -l | tr -d ' ')"
+
+# 生テキストのマーカーが残っていないかを確認する（0件であるべき）
+grep -rho '\[!\(NOTE\|TIP\|IMPORTANT\|WARNING\|CAUTION\)\]' dist/ --include='*.html' | sort | uniq -c
 ```
 
 > 画像が `_astro/` に想定より少なく出力される場合、**内容が同一の画像は 1 ファイルに重複排除される**ためであり異常ではない。md 側の参照先が正しいかで判断する。
@@ -559,6 +589,10 @@ gh pr create --fill
 | Mermaid が `flowchart TD` などの生テキストで表示される | Starlight は Mermaid 未対応 | `astro-mermaid` を導入する（ステップ 3・4） |
 | `astro-mermaid` を入れたのに図にならない | `integrations` で `mermaid()` が `starlight()` より**後ろ**にある。エラーは出ない | `mermaid()` を配列の先頭に移す |
 | `Cannot find package 'astro-mermaid'` | テンプレートの `mermaid()` を残したまま依存を入れていない | 入れるか、`import` ごと削除する |
+| `[!NOTE]` `[!TIP]` が本文に生テキストで出る | Starlight は GitHub のアラート記法に未対応（`:::note` 形式のみ扱う） | `remark-github-alerts.mjs` を導入する（ステップ 3・4） |
+| `IMPORTANT` と `NOTE` の見た目が同じ | Starlight の aside は `note`/`tip`/`caution`/`danger` の 4 種類しかない | 仕様。区別するなら `VARIANT_BY_ALERT` を書き換える |
+| `Cannot find package 'unist-util-visit'` | remark 系の推移的依存に頼っていて、依存構造の変化で消えた | `npm install unist-util-visit` で直接依存にする |
+| aside の数がソースと合わない（多い） | `grep starlight-aside--` が CSS 内のセレクタ定義も拾っている | `--include='*.html'` を付けて数える |
 
 ## 情報の鮮度に関する注意
 

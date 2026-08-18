@@ -4,6 +4,7 @@ import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
 import { rehypeMarkdownLinks } from './plugins/rehype-markdown-links.mjs';
+import { remarkGithubAlerts } from './plugins/remark-github-alerts.mjs';
 
 // ---- 対象リポジトリに合わせて書き換える ----
 // user.github.io/repo で公開      → site: 'https://user.github.io', BASE: '/repo'
@@ -19,6 +20,10 @@ export default defineConfig({
 	markdown: {
 		// Astro v7 以降の形式。markdown.rehypePlugins を直接書くのは非推奨。
 		processor: unified({
+			// GitHub のアラート記法（> [!NOTE] など）を Starlight の aside に変換する。
+			// 未導入だと [!NOTE] という文字列が本文に出たままになる。
+			// md にアラート記法が 1 件も無い場合は、この import と登録ごと削除してよい。
+			remarkPlugins: [remarkGithubAlerts],
 			rehypePlugins: [[rehypeMarkdownLinks, { base: BASE }]],
 		}),
 	},
