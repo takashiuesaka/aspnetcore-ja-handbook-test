@@ -290,6 +290,8 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 - `assets/content.config.ts` — コンテンツコレクション定義（`src/content.config.ts` に置く）
 - `assets/rehype-markdown-links.mjs` — md 間リンク解決プラグイン（`plugins/` に置く）
 - `assets/remark-github-alerts.mjs` — GitHub アラート記法の変換プラグイン（`plugins/` に置く）
+- `assets/PanelToggles.astro` — 左右サイドバーの開閉ボタン（`src/components/` に置く）
+- `assets/panel-toggle.css` — 開閉のスタイル（`src/styles/` に置く）
 - `assets/feature-build-only.yml` — feature ブランチ用のビルド検証（`.github/workflows/` に置く）
 - `assets/main-build-and-publish.yml` — main 用のビルド＋Pages 公開（`.github/workflows/` に置く）
 - `assets/gitignore` — `.gitignore` に追記
@@ -336,6 +338,41 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 >
 > `IMPORTANT` と `NOTE` が同じ見た目になる点は許容している。区別したい場合は `VARIANT_BY_ALERT` を書き換える。
 > ラベルは `locales` の `lang` から自動で日本語になる。変えたい場合は各 aside に `:::note[独自ラベル]` と書く必要があり、この記法変換とは両立しないため通常は既定のままでよい。
+
+> **左右サイドバーの開閉ボタン**（`components` / `customCss` / `head` の 3 点セット）
+>
+> Starlight は画面幅が広いと左サイドバー（ナビゲーション）と右サイドバー（目次）を常時表示し、**畳む手段を持たない**。本文に集中したいときのために、ヘッダー右側へトグルボタンを 2 つ足す。
+>
+> 実装の要点は 3 つ。
+>
+> **1. 状態は `<html>` の属性 1 つだけで表す**
+>
+> `data-sidebar-collapsed` / `data-toc-collapsed` を付け外しし、レイアウトの切り替えは CSS のメディアクエリに閉じる。JS がやるのは属性のトグルと `localStorage` への保存だけ。
+> こうすると **ウィンドウのリサイズを JS で監視する必要がない**。50rem / 72rem の境界をまたいでも CSS が勝手に追従する。
+> Starlight 自身の `data-has-sidebar` / `data-has-toc` を消す実装も一見きれいだが、モバイル用のドロワーやヘッダーの余白まで巻き添えで壊れるので採らない。
+>
+> **2. `@layer` に属さない CSS で上書きする**
+>
+> Starlight のコンポーネント CSS は**すべて `@layer starlight.*` に入っている**。レイヤーに属さない宣言は詳細度に関係なくレイヤー付きより優先されるため、`!important` を使わずに上書きできる（Starlight が意図している上書き手段）。
+> `customCss` で読み込む `panel-toggle.css` には `@layer` を書かないこと。書いた瞬間に効かなくなる。
+>
+> **3. FOUC を防ぐため `head` にインラインスクリプトを置く**
+>
+> `localStorage` の復元をバンドル済みの `<script>` でやると**描画に間に合わず、サイドバーが一瞬見えてから消える**。`starlight({ head: [...] })` で `<head>` に直接書き出す必要がある。
+>
+> 併せて `--sl-content-width`（本文の最大幅・既定 45rem）を畳んだ枚数に応じて引き上げている。**これが無いとパネルを閉じても左右の余白が増えるだけで本文の幅は変わらない**（Starlight 自身もサイドバーが無いページでは 67.5rem に広げている）。
+>
+> | 状態 | 本文幅の上限 |
+> | --- | --- |
+> | 既定 | 45rem |
+> | 片方を折りたたみ | 60rem |
+> | 両方を折りたたみ | 82.5rem |
+>
+> ボタンは**そのパネルが実際に使われる画面幅でのみ**表示する。50rem 未満はモバイルのドロワー、72rem 未満は本文上部のモバイル目次が使われるため、デスクトップ用の開閉ボタンは意味を持たない。
+>
+> `PanelToggles.astro` は差し替え元の `SocialIcons` も描画するので、後から `social` 設定を足しても失われない。
+> なお Starlight は `SocialIcons` を**ヘッダーとモバイルメニューの 2 箇所**で描画するため、ボタンは HTML 上では各ページ 4 個出力される。モバイル側は親が `md:sl-hidden`（50rem 以上で `display: none`）なので二重表示にはならない。
+> 開閉機能が不要なら `components` / `customCss` / `head` の 3 つと 2 ファイルを削除するだけでよい（他の機能には影響しない）。
 
 ```bash
 # 実際のアカウント名を取得する
@@ -493,7 +530,42 @@ echo "dist  : $(grep -rho 'starlight-aside--' dist/ --include='*.html' | wc -l |
 
 # 生テキストのマーカーが残っていないかを確認する（0件であるべき）
 grep -rho '\[!\(NOTE\|TIP\|IMPORTANT\|WARNING\|CAUTION\)\]' dist/ --include='*.html' | sort | uniq -c
+
+# サイドバー開閉ボタンが出力されているかを確認する
+# Starlight は SocialIcons をヘッダーとモバイルメニュー内の 2 箇所で描画するため、
+# ボタン 2 個 × 2 箇所 = 各ページ 4 個 になる（サイドバーが無い 404 は 2 個）。
+# モバイル側は親が md:sl-hidden で display:none になるため、デスクトップで二重表示にはならない。
+for f in $(find dist -name "*.html"); do
+  echo "$(grep -o 'class="panel-toggle"' $f | wc -l | tr -d ' ') $f"
+done
+
+# FOUC 回避のインラインスクリプトが head に出ているかを確認する
+grep -rl 'sl-sidebar-collapsed' dist/ --include='*.html' | wc -l
+
+# panel-toggle.css が @layer の外に出ているかを確認する
+# レイヤー内に入っていると Starlight 側に負けて効かない。「(レイヤー無し)」だけであるべき。
+node -e "
+const fs=require('fs'), path=require('path');
+const dir='dist/_astro';
+const file=fs.readdirSync(dir).map(f=>path.join(dir,f))
+  .filter(f=>f.endsWith('.css')&&fs.readFileSync(f,'utf8').includes('.panel-toggle'))[0];
+if(!file){console.log('panel-toggle の CSS が見つからない');process.exit(1);}
+const css=fs.readFileSync(file,'utf8');
+const stack=[], counts={};
+for(let i=0;i<css.length;){
+  if(css[i]==='{'){ stack.push(/@layer\s+([a-z.]+)\s*\$/.test(css.slice(Math.max(0,i-60),i))); i++; continue; }
+  if(css[i]==='}'){ stack.pop(); i++; continue; }
+  if(css.startsWith('.panel-toggle',i)){
+    const k=stack.some(Boolean)?'レイヤー内(NG)':'(レイヤー無し)';
+    counts[k]=(counts[k]||0)+1; i+=13; continue;
+  }
+  i++;
+}
+console.log(counts);
+"
 ```
+
+> **開閉ボタンはブラウザで実際に押して確認する。** `display: none` の効き方や本文幅の追従は HTML の grep では判断できない。`npm run preview` を起動し、ウィンドウ幅を 50rem / 72rem の前後で変えながら、開閉・リロード後の状態保持・ダーク/ライト双方を目視する。
 
 > 画像が `_astro/` に想定より少なく出力される場合、**内容が同一の画像は 1 ファイルに重複排除される**ためであり異常ではない。md 側の参照先が正しいかで判断する。
 
@@ -586,6 +658,11 @@ gh pr create --fill
 | README を置いたのにサイトに出ない | `README.md` はビルド対象外（Astro が読むのは `src/content/docs/` 配下だけ） | トップページにするなら `src/content/docs/index.md` として内容をコピーする（ステップ 5-b） |
 | サイドバーに記事が出ない（ビルドは成功する） | `sidebar` の `autogenerate` が存在しないディレクトリを指しており、黙って消えている | `sidebar` の設定自体を削除して自動生成に任せる。明示指定するなら実在パスを書き、ステップ 6 のサイドバー確認コマンドで実物を数える |
 | サイドバーの並び順が意図と違う | 並び順は slug（フォルダ名）順で決まる。frontmatter の `title` は無関係 | フォルダ名に `01-`, `02-` の連番を付ける |
+| 開閉ボタンを押しても何も起きない | `panel-toggle.css` を `@layer` で囲ってしまい、Starlight の `@layer starlight.core` に負けている | `@layer` を書かない。レイヤー無しの宣言が常に優先される |
+| リロード時にサイドバーが一瞬見えてから消える | 状態の復元をバンドルされる `<script>` でやっており描画に間に合っていない | `starlight({ head: [...] })` でインラインスクリプトとして `<head>` に出す |
+| サイドバーを閉じても本文が広がらない | `--sl-content-width`（既定 45rem）が本文幅の上限を握っている | 折りたたみ時に `--sl-content-width` も引き上げる |
+| `data-has-sidebar` を消したらモバイル表示が壊れた | この属性はヘッダーの余白やモバイルドロワーまで制御している | Starlight の属性は触らず、独自の `data-sidebar-collapsed` を足して CSS だけで切り替える |
+| サイドバーを隠したのに本文の左に余白が残る | `.sidebar-pane` は `position: fixed`。属性を消しただけでは重なって残る | `display: none` と `--sl-content-inline-start: 0rem` の両方が必要 |
 | Mermaid が `flowchart TD` などの生テキストで表示される | Starlight は Mermaid 未対応 | `astro-mermaid` を導入する（ステップ 3・4） |
 | `astro-mermaid` を入れたのに図にならない | `integrations` で `mermaid()` が `starlight()` より**後ろ**にある。エラーは出ない | `mermaid()` を配列の先頭に移す |
 | `Cannot find package 'astro-mermaid'` | テンプレートの `mermaid()` を残したまま依存を入れていない | 入れるか、`import` ごと削除する |
