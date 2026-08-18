@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import { rehypeMarkdownLinks } from './plugins/rehype-markdown-links.mjs';
+import { remarkGithubAlerts } from './plugins/remark-github-alerts.mjs';
 
 // ---- 対象リポジトリに合わせて書き換える ----
 // user.github.io/repo で公開      → site: 'https://user.github.io', BASE: '/repo'
@@ -18,6 +19,9 @@ export default defineConfig({
 	markdown: {
 		// Astro v7 以降の形式。markdown.rehypePlugins を直接書くのは非推奨。
 		processor: unified({
+			// Starlight のプラグインは後から push されるため、
+			// アラート変換は必ずここで先に走る。
+			remarkPlugins: [remarkGithubAlerts],
 			rehypePlugins: [[rehypeMarkdownLinks, { base: BASE }]],
 		}),
 	},
