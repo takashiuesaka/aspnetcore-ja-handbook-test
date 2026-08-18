@@ -181,12 +181,17 @@ src/content/docs/
 | URL | `01-setup-dev-env/index.md` → `/<base>/01-setup-dev-env/` |
 | サイドバーの並び順 | **slug（パス）順**。frontmatter の `title` は順序に影響しない |
 | サイドバーのラベル | frontmatter の `title` |
-| `sidebar` 未設定時 | 全ページがフラットに自動生成される（この構成ではこれで十分） |
+| `sidebar` 未設定時 | **サブディレクトリが必ず折りたたみグループになる**。グループ名はフォルダ名の生文字列（`01-setup-dev-env` など）で、frontmatter の `title` は使われない |
 | 同居画像 `./images/x.png` | base 付与 + WebP 変換 + `width`/`height` 自動付与 |
 | フォルダ内の `images/` | ページとして扱われない（md 以外は無視される） |
 
 **`01-` などの連番プレフィックスは残す。** サイドバーの順序が slug 順で決まるため、これが並び順の制御そのものになる。URL にも `/01-setup-dev-env/` として現れるが、順序制御を frontmatter に持たせるより構成が単純で壊れにくい。
 URL から連番を消したい場合のみ、フォルダ名から `01-` を外し、代わりに各 md の frontmatter に `sidebar: { order: 1 }` を書く（ただし全ページに書き漏らしなく入れる必要がある）。
+
+> **グループ名がフォルダ名になるのは Starlight の仕様であり、設定では変えられない。**
+> `utils/navigation.ts` の `treeify()` はサブディレクトリを必ず Dir ノード化し、`groupFromDir()` が `label: dirName` を使う。frontmatter の `title` は参照されない。
+> 「1 ページ = 1 フォルダ」構成では、中身が 1 件だけのグループがフォルダ名で並ぶことになる。
+> これを実用的な見た目にするのがステップ 4 の `assets/Sidebar.astro`（グループ名を `title` にし、子項目をページ内見出しにする）。**このスキルではそれを既定で組み込む。**
 
 **再構成の手順**
 
@@ -292,6 +297,9 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 - `assets/remark-github-alerts.mjs` — GitHub アラート記法の変換プラグイン（`plugins/` に置く）
 - `assets/PanelToggles.astro` — 左右サイドバーの開閉ボタン（`src/components/` に置く）
 - `assets/panel-toggle.css` — 開閉のスタイル（`src/styles/` に置く）
+- `assets/Sidebar.astro` — サイドバーのグループ表示のカスタマイズ（`src/components/` に置く）
+- `assets/SidebarSublist.astro` — 同上の描画本体（`src/components/` に置く）
+- `assets/page-headings.ts` — 各ページの `##` 見出し収集（`src/lib/` に置く）
 - `assets/feature-build-only.yml` — feature ブランチ用のビルド検証（`.github/workflows/` に置く）
 - `assets/main-build-and-publish.yml` — main 用のビルド＋Pages 公開（`.github/workflows/` に置く）
 - `assets/gitignore` — `.gitignore` に追記
@@ -373,6 +381,38 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 > `PanelToggles.astro` は差し替え元の `SocialIcons` も描画するので、後から `social` 設定を足しても失われない。
 > なお Starlight は `SocialIcons` を**ヘッダーとモバイルメニューの 2 箇所**で描画するため、ボタンは HTML 上では各ページ 4 個出力される。モバイル側は親が `md:sl-hidden`（50rem 以上で `display: none`）なので二重表示にはならない。
 > 開閉機能が不要なら `components` / `customCss` / `head` の 3 つと 2 ファイルを削除するだけでよい（他の機能には影響しない）。
+
+> **`Sidebar.astro` / `SidebarSublist.astro` / `page-headings.ts` について（サイドバーのグループ表示）**
+>
+> ステップ 2-c の「1 ページ = 1 フォルダ」構成では、自動生成サイドバーが**フォルダ名のグループ + 中身 1 件**という使いにくい形になる。この 3 ファイルはそれを次の形に置き換える。
+>
+> | # | 挙動 |
+> | --- | --- |
+> | 1 | 折りたたみグループ名は `index.md` の frontmatter `title` |
+> | 2 | グループ名をクリックすると `index.md` を開く（現在ページなら自動展開 + `aria-current`） |
+> | 3 | 子項目は `index.md` の `##` 見出し（`目次` は右 TOC と重複するため除外） |
+>
+> **設計の要点**
+>
+> **1. 見出しの slug は自前で計算しない**
+>
+> `page-headings.ts` は `getCollection('docs')` + `render(entry)` で **Astro が実際に生成した `headings`** を読む。`github-slugger` を自分で呼んで再現しようとすると、コードスパン・HTML エンティティ（`IOptions&lt;T&gt;`）・リンク記法を含む見出しで必ずずれる。`render()` の結果はモジュールスコープでキャッシュしており、ページ数分しか走らない。
+>
+> **2. Starlight が組み立てたサイドバーを作り替える（自前で走査しない）**
+>
+> `Astro.locals.starlightRoute.sidebar` をそのまま受け取り、**「子が 1 件のリンクだけのグループ」をページグループとみなして**中身を差し替える。並び順・`base` の付与・現在ページ判定は Starlight の結果をそのまま使えるため、`sidebar` 設定を書く必要がない（ページを追加してもフォルダを置くだけで済む）。
+>
+> 見出しを持たないページは折りたたまず素のリンクにし、入れ子ディレクトリの通常グループは Starlight 既定と同じ見た目で再帰描画する。
+>
+> **3. `<summary>` の中にリンクを置く**
+>
+> Starlight の `<summary>` は開閉トグルであってリンクではない。グループ名をクリック可能にするため `<summary>` 内に `<a>` を置き、`click` の伝播を止めて開閉が同時に起きないようにしている。
+>
+> **4. スタイルは Starlight の `SidebarSublist` からコピーする**
+>
+> Starlight のサイドバーのスタイルは `SidebarSublist.astro` にスコープされており、**差し替えた自前のマークアップには一切当たらない**。見た目を保つには当該 `<style>` を持ち込む必要がある（`.astro` のスコープ付き `<style>` は `@layer` に属さないので、Starlight 側に負けることはない）。
+>
+> 不要なら `components.Sidebar` の 1 行と 3 ファイルを削除すれば、Starlight 既定のサイドバーに戻る。
 
 ```bash
 # 実際のアカウント名を取得する
@@ -512,6 +552,26 @@ const items=[...h.slice(i,j).matchAll(/href=\"([^\"]+)\"[^>]*>(?:<span[^>]*>)?([
   .map(x=>x[2].trim()+'  ->  '+x[1]).filter(x=>!x.startsWith('  ->'));
 console.log(items.length?items.join('\n'):'(サイドバーが空)');
 " dist/<最初の記事>/index.html
+
+# サイドバーの見出しアンカーが実在するかを確認する（Sidebar.astro を使う場合）
+# 見出しの slug がずれるとリンクだけが静かに壊れるため、リンク先の id を実際に引き当てる。
+# <base> は実際の値に置換。リンク切れ 0 / 目次 0 であるべき。
+node -e "
+const fs=require('fs'); const base='/<base>';
+const h=fs.readFileSync('dist/index.html','utf8');
+const i=h.indexOf('<nav class=\"sidebar'), j=h.indexOf('</nav>', i);
+const hrefs=[...h.slice(i,j).matchAll(/href=\"([^\"]+#[^\"]+)\"/g)].map(m=>m[1]);
+let ng=0;
+for (const u of hrefs) {
+  const [p,a]=u.split('#');
+  const f='dist'+p.slice(base.length)+'index.html';
+  if(!fs.readFileSync(f,'utf8').includes('id=\"'+decodeURIComponent(a)+'\"')){console.log('NG',u);ng++;}
+}
+console.log('アンカー', hrefs.length, '/ リンク切れ', ng, '/ 目次', hrefs.filter(u=>u.includes('目次')).length);
+"
+
+# グループ名が index.md へのリンクになっているかを確認する（ページ数と一致すべき）
+grep -o 'class="group-link' dist/<最初の記事>/index.html | wc -l | tr -d ' '
 
 # Mermaid が図に変換されているかを確認する（mermaid ブロックがある場合）
 # ソースのブロック数と dist の .mermaid コンテナ数が一致すべき。
@@ -658,6 +718,11 @@ gh pr create --fill
 | README を置いたのにサイトに出ない | `README.md` はビルド対象外（Astro が読むのは `src/content/docs/` 配下だけ） | トップページにするなら `src/content/docs/index.md` として内容をコピーする（ステップ 5-b） |
 | サイドバーに記事が出ない（ビルドは成功する） | `sidebar` の `autogenerate` が存在しないディレクトリを指しており、黙って消えている | `sidebar` の設定自体を削除して自動生成に任せる。明示指定するなら実在パスを書き、ステップ 6 のサイドバー確認コマンドで実物を数える |
 | サイドバーの並び順が意図と違う | 並び順は slug（フォルダ名）順で決まる。frontmatter の `title` は無関係 | フォルダ名に `01-`, `02-` の連番を付ける |
+| サイドバーのグループ名がフォルダ名のまま | Starlight の `groupFromDir()` が `label: dirName` を使う仕様。設定では変えられない | `assets/Sidebar.astro` 一式を導入して `components.Sidebar` を差し替える |
+| グループ名をクリックしても開閉するだけでページが開かない | Starlight の `<summary>` はトグルでありリンクではない | `<summary>` 内に `<a>` を置き、`click` の伝播を止める（`SidebarSublist.astro` が実装済み） |
+| 差し替えたサイドバーの見た目が崩れる | Starlight のスタイルは `SidebarSublist.astro` にスコープされており自前のマークアップには当たらない | 当該 `<style>` をコピーして持ち込む |
+| サイドバーの見出しリンクだけが 404 | slug を自前計算すると記号・HTML エンティティ・コードスパンでずれる | `render(entry)` が返す `headings` の `slug` を使う。ステップ 6 のアンカー検証を実行する |
+| サイドバーに `目次` が出る | ページ冒頭の目次見出しが `##` として拾われている | `page-headings.ts` の `EXCLUDED_HEADINGS` に見出し文字列を追加する |
 | 開閉ボタンを押しても何も起きない | `panel-toggle.css` を `@layer` で囲ってしまい、Starlight の `@layer starlight.core` に負けている | `@layer` を書かない。レイヤー無しの宣言が常に優先される |
 | リロード時にサイドバーが一瞬見えてから消える | 状態の復元をバンドルされる `<script>` でやっており描画に間に合っていない | `starlight({ head: [...] })` でインラインスクリプトとして `<head>` に出す |
 | サイドバーを閉じても本文が広がらない | `--sl-content-width`（既定 45rem）が本文幅の上限を握っている | 折りたたみ時に `--sl-content-width` も引き上げる |
