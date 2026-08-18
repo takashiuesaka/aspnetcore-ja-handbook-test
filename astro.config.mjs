@@ -2,6 +2,7 @@
 import { defineConfig } from 'astro/config';
 import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
+import mermaid from 'astro-mermaid';
 import { rehypeMarkdownLinks } from './plugins/rehype-markdown-links.mjs';
 import { remarkGithubAlerts } from './plugins/remark-github-alerts.mjs';
 
@@ -26,6 +27,14 @@ export default defineConfig({
 		}),
 	},
 	integrations: [
+		// Mermaid は Starlight より前に置く必要がある。
+		// Starlight の Markdown 処理より先に mermaid ブロックを取り出すため。
+		mermaid({
+			// Starlight のダーク/ライト切替（data-theme 属性）に追従させる。
+			theme: 'default',
+			autoTheme: true,
+			enableLog: false,
+		}),
 		starlight({
 			title: 'ASP.NET Core ハンドブック',
 			defaultLocale: 'root',
