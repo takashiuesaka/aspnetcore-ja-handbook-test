@@ -1,4 +1,6 @@
-# 第1章：ASP.NET Core 開発環境セットアップ
+---
+title: "第1章：ASP.NET Core 開発環境セットアップ"
+---
 
 > **対象バージョン**: .NET 10 (LTS) / .NET 9 (STS)  
 > **参考**: [Microsoft 公式ドキュメント](https://learn.microsoft.com/ja-jp/dotnet/)
@@ -742,4 +744,4 @@ flowchart TB
 
 ---
 
-*次の章: [第2章：ソリューションとプロジェクト構成](./02-solutions-and-projects.md)*
+*次の章: [第2章：ソリューションとプロジェクト構成](../02-solutions-and-projects/index.md)*

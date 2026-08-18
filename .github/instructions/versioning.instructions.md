@@ -1,5 +1,5 @@
 ---
-applyTo: "docs/**"
+applyTo: "src/content/docs/**"
 ---
 
 # バージョン決定ルール
