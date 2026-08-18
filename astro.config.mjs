@@ -59,9 +59,13 @@ export default defineConfig({
 			// ],
 			tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },
 			pagination: true,
-			// 左右サイドバーの開閉ボタン。SocialIcons を差し替えて
-			// ヘッダー右側にボタンを追加する（元の SocialIcons も描画される）。
+			// Sidebar は折りたたみグループの表示をカスタマイズするための差し替え。
+			// グループ名をフォルダ名ではなく index.md の title にし、
+			// クリックで index.md へ遷移、子項目に index.md の `##` 見出しを並べる。
+			// SocialIcons は左右サイドバーの開閉ボタンを追加するための差し替え
+			// （元の SocialIcons も併せて描画される）。
 			components: {
+				Sidebar: './src/components/Sidebar.astro',
 				SocialIcons: './src/components/PanelToggles.astro',
 			},
 			customCss: ['./src/styles/panel-toggle.css'],

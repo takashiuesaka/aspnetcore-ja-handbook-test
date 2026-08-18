@@ -54,7 +54,11 @@ export default defineConfig({
 			// 並び順は slug（フォルダ名）順になる。
 			// → 01-, 02- ... の連番プレフィックスがそのまま並び順になる。
 			//
-			// 注意: frontmatter の title は並び順に一切影響しない。
+			// 注意1: frontmatter の title は並び順に一切影響しない。
+			// 注意2: サブディレクトリは必ず折りたたみグループになり、
+			//        グループ名はフォルダ名の生文字列になる。
+			//        これを index.md の title に置き換えるのが
+			//        下の components.Sidebar（Sidebar.astro）の役割。
 			//
 			// 明示的にグループ分けしたい場合のみ、以下のように書く。
 			// 存在しない directory を指定してもエラーにならず、
@@ -67,11 +71,19 @@ export default defineConfig({
 			// ],
 			tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },
 			pagination: true,
-			// 左サイドバー／右サイドバー（目次）の開閉ボタン。
-			// SocialIcons を差し替えてヘッダー右側にボタンを追加する
-			// （PanelToggles.astro は元の SocialIcons もそのまま描画する）。
-			// 開閉機能が不要なら components / customCss / head の 3 つを削除する。
+			// Sidebar: 折りたたみグループの中身をページの見出しにする。
+			//   - グループ名は index.md の frontmatter title
+			//   - グループ名クリックで index.md を開く
+			//   - 子項目は index.md の `##` 見出し（目次は除外）
+			//   不要なら components.Sidebar の行と src/components/Sidebar.astro,
+			//   src/components/SidebarSublist.astro, src/lib/page-headings.ts を削除する。
+			//
+			// SocialIcons: 左サイドバー／右サイドバー（目次）の開閉ボタン。
+			//   ヘッダー右側にボタンを追加する
+			//   （PanelToggles.astro は元の SocialIcons もそのまま描画する）。
+			//   不要なら SocialIcons の行と customCss / head を削除する。
 			components: {
+				Sidebar: './src/components/Sidebar.astro',
 				SocialIcons: './src/components/PanelToggles.astro',
 			},
 			customCss: ['./src/styles/panel-toggle.css'],
