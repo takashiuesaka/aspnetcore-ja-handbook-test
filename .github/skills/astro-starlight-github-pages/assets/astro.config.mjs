@@ -67,6 +67,30 @@ export default defineConfig({
 			// ],
 			tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },
 			pagination: true,
+			// 左サイドバー／右サイドバー（目次）の開閉ボタン。
+			// SocialIcons を差し替えてヘッダー右側にボタンを追加する
+			// （PanelToggles.astro は元の SocialIcons もそのまま描画する）。
+			// 開閉機能が不要なら components / customCss / head の 3 つを削除する。
+			components: {
+				SocialIcons: './src/components/PanelToggles.astro',
+			},
+			customCss: ['./src/styles/panel-toggle.css'],
+			head: [
+				{
+					// 描画前に折りたたみ状態を復元して、
+					// サイドバーが一瞬見えてから消える（FOUC）のを防ぐ。
+					// バンドルされる <script> では描画に間に合わないため、
+					// ここでインラインとして head に入れる必要がある。
+					tag: 'script',
+					content: [
+						'try {',
+						'  var d = document.documentElement;',
+						"  if (localStorage.getItem('sl-sidebar-collapsed') === '1') d.setAttribute('data-sidebar-collapsed', '');",
+						"  if (localStorage.getItem('sl-toc-collapsed') === '1') d.setAttribute('data-toc-collapsed', '');",
+						'} catch (e) {}',
+					].join('\n'),
+				},
+			],
 			// GitHub のソースへのリンクを出す場合
 			// editLink: { baseUrl: 'https://github.com/<owner>/<repo>/edit/main/' },
 		}),
