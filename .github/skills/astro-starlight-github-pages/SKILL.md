@@ -217,6 +217,7 @@ done
 
 ```bash
 # 3. 洗い出した対応に従って、画像を各ページのフォルダへ移す（1ファイルずつ確認して実行）
+#    画像を 1 枚も参照していないページには images/ を作らない（空フォルダが残る）
 mkdir -p 01-setup-dev-env/images
 git mv images/vs-install.png 01-setup-dev-env/images/
 
@@ -226,6 +227,11 @@ git mv images/vs-install.png 01-setup-dev-env/images/
 
 # 5. 移し終えたら共有 images/ が空になっているか確認する
 ls images/ 2>/dev/null && echo "→ 残っている = どのページからも参照されていない画像"
+
+# 6. 空の images/ を作っていないか確認する（何も出なければ OK）
+#    Git は空ディレクトリを追跡しないため commit すれば消えるが、
+#    手元に残ると「画像があるページ」に見えて紛らわしい。
+find . -type d -name images -empty
 ```
 
 **未使用画像は `src/content/docs/` の中に残さない。**
@@ -321,7 +327,7 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 | `user.github.io`（専用リポジトリ） | `https://user.github.io` | 不要 |
 | 独自ドメイン | `https://example.com` | 不要 |
 
-テンプレートの `SITE` は `https://example.github.io` というプレースホルダになっている。**書き換えを忘れてもビルドは成功し、サイトも一見正常に動く**（`base` と違い、`site` は sitemap と OGP の絶対 URL にしか使われないため）。気づかないまま公開されやすいので、必ず確認する。
+テンプレートの `SITE` / `BASE` は `https://<ユーザー名>.github.io` / `/<リポジトリ名>` というプレースホルダになっている。`BASE` の書き換えを忘れるとリンクも CSS も全滅するのですぐ気づくが、**`SITE` は書き換えを忘れてもビルドが成功しサイトも一見正常に動く**（`site` は sitemap と OGP の絶対 URL にしか使われないため）。気づかないまま公開されやすいので、必ず確認する。
 
 > **`sidebar` は未設定のままにする。** 未設定なら `src/content/docs/` から自動生成され、**slug（フォルダ名）順**に並ぶ。`01-`, `02-` の連番プレフィックスがそのまま並び順になるため、ステップ 2-c の構成ではこれで十分。
 > frontmatter の `title` は**並び順に一切影響しない**（順序を変えたければフォルダ名を変える）。
@@ -419,7 +425,9 @@ npm install astro-mermaid mermaid @mermaid-js/layout-elk
 gh api user --jq .login
 
 # プレースホルダが残っていないか確認（何も出なければ OK）
-grep -n "example\.github\.io\|example\.com" astro.config.mjs README.md
+# ※ example.com を探さないこと。astro.config.mjs のコメント（公開先の対応表）に
+#    説明として出てくるため、正しく設定していてもヒットしてしまう。
+grep -n '<ユーザー名>\|<リポジトリ名>\|<サイトタイトル>' astro.config.mjs
 
 # ビルド後、sitemap の URL が正しいかを確認する
 grep -o '<loc>[^<]*</loc>' dist/sitemap-0.xml | head -3
@@ -433,11 +441,24 @@ grep -o '<loc>[^<]*</loc>' dist/sitemap-0.xml | head -3
 | --- | --- | --- |
 | frontmatter 無し | （無し） | `---\ntitle: ページ名\n---` を追加 |
 | 本文の h1 | `# ページ名` | 削除（`title` が h1 を生成するため重複する） |
+| h1 直下の水平線 | `# ページ名` の次行の `---` | h1 とセットで削除する（下記） |
 | 画像（絶対パス） | `![](/images/a.png)` | `![](../../../images/a.png)` |
 | 画像（HTML 直書き） | `<img src="/images/a.png">` | `![](../../../images/a.png)` |
 | md 間リンク（リポジトリ絶対） | `[x](/docs/guides/a.md)` | `[x](./guides/a.md)` |
 | md 間リンク（サイト絶対） | `[x](/docs/guides/a/)` | `[x](./guides/a.md)` |
 | md 間リンク（相対） | `[x](./guides/a.md)` | **修正不要**（プラグインが変換） |
+
+> **h1 の直下にある `---`（水平線）も一緒に消す。** タイトルの下に区切り線を引く書き方は Markdown でよくあるが、`title` が生成する h1 には Starlight が既にスタイルを当てているため、残すと本文の先頭に線が 1 本浮くだけになる。
+>
+> ```markdown
+> # ページ名        ← 削除
+>                   ← 削除
+> ---               ← 削除
+>                   ← 削除
+> 本文の書き出し…
+> ```
+>
+> `---` は frontmatter の区切りと同じ文字列なので、**frontmatter の閉じ `---` を消さないよう注意する**（消すとビルドが壊れる）。消すのは本文側、h1 の直後にあるものだけ。
 
 **`docs/` を移動した場合は、リポジトリ内の他ファイルからの参照も修正する。** README、CONTRIBUTING、issue テンプレート等が `docs/xxx.md` を指していないか確認する。
 
@@ -468,13 +489,28 @@ grep -rn 'docs/' README.md .github/ --include="*.md" 2>/dev/null | grep -v skill
 
 > **`README.md` はビルド対象外。** Astro が読むのは `src/content/docs/` 配下だけなので、README をそのまま置いても公開サイトには一切現れない。トップページにするには `src/content/docs/index.md` として内容をコピーする必要がある。
 
-README を流用する際、**次の 3 点だけは必ず変える**（そのままコピーすると壊れる）。
+README を流用する際、**次の 4 点だけは必ず変える**（そのままコピーすると壊れる）。
 
 | # | 変更内容 | 理由 |
 | --- | --- | --- |
 | 1 | frontmatter（`title`・`description`）を追加 | `title` が無いとビルドが失敗する |
 | 2 | 先頭の `# タイトル` を削除 | `title` が h1 を生成するため重複する |
 | 3 | 相対リンクの階層を調整 | README は `./src/content/docs/xxx/index.md` 起点、index.md は `./xxx/index.md` 起点 |
+| 4 | サイト外の md へのリンクを GitHub の URL にする | `CONTRIBUTING.md` などは公開サイトに存在しないため（下記） |
+
+> **`CONTRIBUTING.md` / `CODE_OF_CONDUCT.md` などリポジトリ直下の md へのリンクに注意する。**
+> これらは `src/content/docs/` の外にあるためページとして出力されないが、`rehype-markdown-links.mjs` は `.md` で終わる相対リンクを機械的に URL へ変換するため、**リンク切れになったことに気づけない**（ビルドは成功する）。
+> リポジトリ上のファイルを見せたいので、GitHub の URL に書き換えるのが正しい。
+>
+> ```markdown
+> <!-- README.md（そのままでよい） -->
+> [コントリビューションガイド](./CONTRIBUTING.md)
+>
+> <!-- src/content/docs/index.md（絶対 URL にする） -->
+> [コントリビューションガイド](https://github.com/<user>/<repo>/blob/main/CONTRIBUTING.md)
+> ```
+>
+> ステップ 6 の「内部リンク切れ検出」で見つかるので、そこで気づいたら書き換える。
 
 **本文はそれ以外いじらない。推測で内容を足さない。**
 
@@ -706,6 +742,10 @@ gh pr create --fill
 | 画像だけ 404 | md が絶対パス参照 | 相対パスに変更 |
 | md リンクが 404（`.md` が URL に残る） | Astro/Starlight に変換機能が無い | `rehype-markdown-links.mjs` を導入 |
 | 見出しが二重表示 | `title` と本文 `# h1` の重複 | 本文の h1 を削除 |
+| 本文の先頭に線が 1 本浮く | h1 の直下にあった `---`（水平線）を消し忘れている | h1 とセットで削除する（frontmatter の閉じ `---` と間違えないこと） |
+| トップページの `CONTRIBUTING.md` へのリンクが 404 | `src/content/docs/` の外にある md は出力されないが、`.md` リンクは機械的に変換される | GitHub の絶対 URL に書き換える。ステップ 6 の内部リンク切れ検出で見つかる |
+| プレースホルダ検査の grep が必ずヒットする | `example.com` は `astro.config.mjs` のコメント（公開先の対応表）に説明として書かれている | `<ユーザー名>` / `<リポジトリ名>` を探す |
+| 画像を持たないページに空の `images/` が残る | 再構成時に全ページへ機械的に `mkdir` した | `find . -type d -name images -empty` で確認して削除する |
 | `sidebar` でビルドエラー | v0.39 で `autogenerate` の書式変更 | `{ label, items: [{ autogenerate: {...} }] }` 形式にする |
 | `markdown.rehypePlugins` が非推奨警告 | Astro v7 で仕様変更 | `markdown.processor: unified({ rehypePlugins: [...] })` を使う |
 | `_astro/` 配下が配信されない | Jekyll が `_` 始まりを無視 | `public/.nojekyll` を置く |
