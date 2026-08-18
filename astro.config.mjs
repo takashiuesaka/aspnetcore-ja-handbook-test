@@ -59,6 +59,26 @@ export default defineConfig({
 			// ],
 			tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },
 			pagination: true,
+			// 左右サイドバーの開閉ボタン。SocialIcons を差し替えて
+			// ヘッダー右側にボタンを追加する（元の SocialIcons も描画される）。
+			components: {
+				SocialIcons: './src/components/PanelToggles.astro',
+			},
+			customCss: ['./src/styles/panel-toggle.css'],
+			head: [
+				{
+					// 描画前に折りたたみ状態を復元して、
+					// サイドバーが一瞬見えてから消える（FOUC）のを防ぐ。
+					tag: 'script',
+					content: [
+						'try {',
+						'  var d = document.documentElement;',
+						"  if (localStorage.getItem('sl-sidebar-collapsed') === '1') d.setAttribute('data-sidebar-collapsed', '');",
+						"  if (localStorage.getItem('sl-toc-collapsed') === '1') d.setAttribute('data-toc-collapsed', '');",
+						'} catch (e) {}',
+					].join('\n'),
+				},
+			],
 			// GitHub のソースへのリンクを出す場合
 			// editLink: { baseUrl: 'https://github.com/<owner>/<repo>/edit/main/' },
 		}),
